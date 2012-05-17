@@ -12,7 +12,7 @@ int main(int argc, char ** argv){
   int status;
   int lower = 2;
   int upper = 100;
-  int num = 25000;
+  int num = 10000;
   int reps = 5;
   int verbose = 0;
   
@@ -41,8 +41,8 @@ int main(int argc, char ** argv){
 
 
   if(verbose) cout << "initializing inputs" << endl;
-  float *matrices = (float*)malloc(upper * upper * num * sizeof(float));
-  float *vectors = (float*)malloc(upper * num * sizeof(float));
+  double *matrices = (double*)malloc(upper * upper * num * sizeof(double));
+  double *vectors = (double*)malloc(upper * num * sizeof(double));
 
   assert(matrices);
   assert(vectors);
@@ -66,33 +66,33 @@ int main(int argc, char ** argv){
   if(verbose) cout << "allocating device variables" << endl;
 
   // allocate input space on device
-  float *devMatrices;
+  double *devMatrices;
   size_t devMatricesPitch;
   cudaStat = 
     cudaMallocPitch(&devMatrices,
 		    &devMatricesPitch,
-		    upper * sizeof(float),
+		    upper * sizeof(double),
 		    num * upper);
 
   assert(!cudaStat);
 
-  float *devVectors = 0;
+  double *devVectors = 0;
   size_t devVectorsPitch;
   cudaStat = 
     cudaMallocPitch(&devVectors,
 		    &devVectorsPitch,
-		    upper * sizeof(float),
+		    upper * sizeof(double),
 		    num);
 
   assert(!cudaStat);
 
   // allocate result space on device
-  float *devResult = 0;
+  double *devResult = 0;
   size_t devResultPitch;
   cudaStat = 
     cudaMallocPitch(&devResult,
 		    &devResultPitch,
-		    upper * sizeof(float),
+		    upper * sizeof(double),
 		    num);
 
   assert(!cudaStat);
@@ -103,8 +103,8 @@ int main(int argc, char ** argv){
     cudaMemcpy2D(devMatrices,
 		 devMatricesPitch,
 		 matrices,
-		 upper * sizeof(float),
-		 upper * sizeof(float),
+		 upper * sizeof(double),
+		 upper * sizeof(double),
 		 upper * num,
 		 cudaMemcpyHostToDevice);
 
@@ -114,52 +114,52 @@ int main(int argc, char ** argv){
     cudaMemcpy2D(devVectors,
 		 devVectorsPitch,
 		 vectors,
-		 upper * sizeof(float),
-		 upper * sizeof(float),
+		 upper * sizeof(double),
+		 upper * sizeof(double),
 		 num,
 		 cudaMemcpyHostToDevice);
 
   assert(!cudaStat);
 
   // create lists of device pointers to inputs and outputs
-  float **AList = 0, **BList = 0, **CList = 0;
+  double **AList = 0, **BList = 0, **CList = 0;
 
-  AList = (float**)malloc(num * sizeof(float*));
-  BList = (float**)malloc(num * sizeof(float*));
-  CList = (float**)malloc(num * sizeof(float*));
+  AList = (double**)malloc(num * sizeof(double*));
+  BList = (double**)malloc(num * sizeof(double*));
+  CList = (double**)malloc(num * sizeof(double*));
 
   for(int i = 0; i < num; i++){
-    AList[i] = devMatrices + devMatricesPitch/sizeof(float) * upper * i;
-    BList[i] = devVectors + devVectorsPitch/sizeof(float) * i;
-    CList[i] = devResult + devResultPitch/sizeof(float) * i;
+    AList[i] = devMatrices + devMatricesPitch/sizeof(double) * upper * i;
+    BList[i] = devVectors + devVectorsPitch/sizeof(double) * i;
+    CList[i] = devResult + devResultPitch/sizeof(double) * i;
   }
 
   // copy pointer lists to device
-  float **devAList = 0, **devBList = 0, **devCList = 0;
-  cudaStat = cudaMalloc(&devAList, num * sizeof(float*));
+  double **devAList = 0, **devBList = 0, **devCList = 0;
+  cudaStat = cudaMalloc(&devAList, num * sizeof(double*));
   assert(!cudaStat);
 
-  cudaStat = cudaMalloc(&devBList, num * sizeof(float*));
+  cudaStat = cudaMalloc(&devBList, num * sizeof(double*));
   assert(!cudaStat);
 
-  cudaStat = cudaMalloc(&devCList, num * sizeof(float*));
+  cudaStat = cudaMalloc(&devCList, num * sizeof(double*));
   assert(!cudaStat);
 
   cudaStat = cudaMemcpy(devAList,
 			AList,
-			num * sizeof(float*),
+			num * sizeof(double*),
 			cudaMemcpyHostToDevice);
   assert(!cudaStat);
   
   cudaStat = cudaMemcpy(devBList,
 			BList,
-			num * sizeof(float*),
+			num * sizeof(double*),
 			cudaMemcpyHostToDevice);
   assert(!cudaStat);
 
   cudaStat = cudaMemcpy(devCList,
 			CList,
-			num * sizeof(float*),
+			num * sizeof(double*),
 			cudaMemcpyHostToDevice);
   assert(!cudaStat);
 
@@ -168,10 +168,10 @@ int main(int argc, char ** argv){
   cudaEventCreate(&stop);
   
   int 
-    lda = devMatricesPitch / sizeof(float),
-    ldb = devVectorsPitch / sizeof(float),
-    ldc = devResultPitch / sizeof(float);
-  const float alpha = 1.0f, beta = 0.0f;
+    lda = devMatricesPitch / sizeof(double),
+    ldb = devVectorsPitch / sizeof(double),
+    ldc = devResultPitch / sizeof(double);
+  const double alpha = 1.0f, beta = 0.0f;
 
   /* perform <num> <size x size> x <size x 1> multiplications 
      with distinct matrices
@@ -180,16 +180,16 @@ int main(int argc, char ** argv){
     if(verbose) cout << "running with size " << size << endl;
     for(int rep = 0; rep < reps; rep++){
       cudaEventRecord(start, 0);
-      stat = cublasSgemmBatched(handle,
+      stat = cublasDgemmBatched(handle,
 				CUBLAS_OP_N,
 				CUBLAS_OP_N,
 				size,
 				1,
 				size,
 				&alpha,
-				(const float**)devAList,
+				(const double**)devAList,
 				lda,
-				(const float**)devBList,
+				(const double**)devBList,
 				ldb,
 				&beta,
 				devCList,
@@ -224,16 +224,16 @@ int main(int argc, char ** argv){
     if(verbose) cout << "running with size " << size << endl;
     for(int rep = 0; rep < reps; rep++){
       cudaEventRecord(start, 0);
-      stat = cublasSgemmBatched(handle,
+      stat = cublasDgemmBatched(handle,
 				CUBLAS_OP_N,
 				CUBLAS_OP_N,
 				size,
 				1,
 				size,
 				&alpha,
-				(const float**)devAList,
+				(const double**)devAList,
 				lda,
-				(const float**)devBList,
+				(const double**)devBList,
 				ldb,
 				&beta,
 				devCList,
