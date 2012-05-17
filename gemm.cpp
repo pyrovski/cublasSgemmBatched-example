@@ -1,6 +1,7 @@
 #include <unistd.h>
 #include <iostream>
 #include <stdlib.h>
+#include <assert.h>
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
 
@@ -11,10 +12,11 @@ int main(int argc, char ** argv){
   int status;
   int lower = 2;
   int upper = 100;
-  int num = 100000;
+  int num = 10000;
   int reps = 5;
+  int verbose = 0;
   
-  while((status = getopt(argc, argv, "l:u:n:r:")) != -1){
+  while((status = getopt(argc, argv, "l:u:n:r:v")) != -1){
     switch(status){
     case 'l':
       lower = strtoul(optarg, 0, 0);
@@ -28,14 +30,22 @@ int main(int argc, char ** argv){
     case 'r':
       reps = strtoul(optarg, 0, 0);
       break;
+    case 'v':
+      verbose = 1;
+      break;
     default:
       cerr << "invalid argument: " << status << endl;
       exit(1);
     }
   }
 
+
+  if(verbose) cout << "initializing inputs" << endl;
   float *matrices = (float*)malloc(upper * upper * num * sizeof(float));
   float *vectors = (float*)malloc(upper * num * sizeof(float));
+
+  assert(matrices);
+  assert(vectors);
 
   for(int i = 0; i < num * upper * upper; i++)
     matrices[i] = drand48();
@@ -53,6 +63,8 @@ int main(int argc, char ** argv){
     exit(1);
   }
 
+  if(verbose) cout << "allocating device variables" << endl;
+
   // allocate input space on device
   struct cudaPitchedPtr devMatrices;
   struct cudaExtent devMatricesExtent;
@@ -66,6 +78,8 @@ int main(int argc, char ** argv){
     cudaMalloc3D(&devMatrices,
 		 devMatricesExtent);
 
+  assert(!cudaStat);
+
   float *devVectors = 0;
   size_t devVectorsPitch;
   cudaStat = 
@@ -73,6 +87,8 @@ int main(int argc, char ** argv){
 		    &devVectorsPitch,
 		    upper * sizeof(float),
 		    num);
+
+  assert(!cudaStat);
 
   // allocate result space on device
   float *devResult = 0;
@@ -83,6 +99,9 @@ int main(int argc, char ** argv){
 		    upper * sizeof(float),
 		    num);
 
+  assert(!cudaStat);
+
+  if(verbose) cout << "copying data to device" << endl;
   // copy data to device
   struct cudaMemcpy3DParms devMatricesParams = {0};
   devMatricesParams.extent = devMatricesExtent;
@@ -96,6 +115,8 @@ int main(int argc, char ** argv){
 
   cudaStat = 
     cudaMemcpy3D(&devMatricesParams);
+
+  assert(!cudaStat);
   
   cudaStat = 
     cudaMemcpy2D(devVectors,
@@ -105,6 +126,8 @@ int main(int argc, char ** argv){
 		 upper * sizeof(float),
 		 num,
 		 cudaMemcpyHostToDevice);
+
+  assert(!cudaStat);
 
   // create lists of device pointers to inputs and outputs
   float **AList = 0, **BList = 0, **CList = 0;
@@ -123,23 +146,31 @@ int main(int argc, char ** argv){
   // copy pointer lists to device
   float **devAList = 0, **devBList = 0, **devCList = 0;
   cudaStat = cudaMalloc(&devAList, num * sizeof(float*));
+  assert(!cudaStat);
+
   cudaStat = cudaMalloc(&devBList, num * sizeof(float*));
+  assert(!cudaStat);
+
   cudaStat = cudaMalloc(&devCList, num * sizeof(float*));
+  assert(!cudaStat);
 
   cudaStat = cudaMemcpy(devAList,
 			AList,
 			num * sizeof(float*),
 			cudaMemcpyHostToDevice);
+  assert(!cudaStat);
   
   cudaStat = cudaMemcpy(devBList,
 			BList,
 			num * sizeof(float*),
 			cudaMemcpyHostToDevice);
+  assert(!cudaStat);
 
   cudaStat = cudaMemcpy(devCList,
 			CList,
 			num * sizeof(float*),
 			cudaMemcpyHostToDevice);
+  assert(!cudaStat);
 
   int 
     lda = devMatrices.pitch / sizeof(float),
@@ -149,22 +180,28 @@ int main(int argc, char ** argv){
 
   // perform <num> <size x size> x <size x 1> multiplications
   for(int size = lower; size <= upper; size++){
-    
-    stat = cublasSgemmBatched(handle,
-			      CUBLAS_OP_N,
-			      CUBLAS_OP_N,
-			      size,
-			      1,
-			      size,
-			      &alpha,
-			      (const float**)devAList,
-			      lda,
-			      (const float**)devBList,
-			      ldb,
-			      &beta,
-			      devCList,
-			      ldc,
-			      num);
+    if(verbose) cout << "running with size " << size << endl;
+    for(int rep = 0; rep < reps; rep++){
+      stat = cublasSgemmBatched(handle,
+				CUBLAS_OP_N,
+				CUBLAS_OP_N,
+				size,
+				1,
+				size,
+				&alpha,
+				(const float**)devAList,
+				lda,
+				(const float**)devBList,
+				ldb,
+				&beta,
+				devCList,
+				ldc,
+				num);
+      if(stat != CUBLAS_STATUS_SUCCESS){
+	cerr << "cublasSgemmBatched failed" << endl;
+	exit(1);
+      }
+    }
   }
   free(matrices);
   free(vectors);
