@@ -69,8 +69,7 @@ int main(int argc, char ** argv){
   float *devVectors = 0;
   size_t devVectorsPitch;
   cudaStat = 
-    cudaMallocPitch(
-		    &devVectors,
+    cudaMallocPitch(&devVectors,
 		    &devVectorsPitch,
 		    upper * sizeof(float),
 		    num);
@@ -79,12 +78,10 @@ int main(int argc, char ** argv){
   float *devResult = 0;
   size_t devResultPitch;
   cudaStat = 
-    cudaMallocPitch(
-		    &devResult,
+    cudaMallocPitch(&devResult,
 		    &devResultPitch,
 		    upper * sizeof(float),
-		    num
-		    );
+		    num);
 
   // copy data to device
   struct cudaMemcpy3DParms devMatricesParams = {0};
@@ -144,16 +141,30 @@ int main(int argc, char ** argv){
 			num * sizeof(float*),
 			cudaMemcpyHostToDevice);
 
+  int 
+    lda = devMatrices.pitch / sizeof(float),
+    ldb = devVectorsPitch / sizeof(float),
+    ldc = devResultPitch / sizeof(float);
+  const float alpha = 1.0f, beta = 0.0f;
+
   // perform <num> <size x size> x <size x 1> multiplications
   for(int size = lower; size <= upper; size++){
     
-    /*
     stat = cublasSgemmBatched(handle,
 			      CUBLAS_OP_N,
 			      CUBLAS_OP_N,
-			      
-			      );
-    */
+			      size,
+			      1,
+			      size,
+			      &alpha,
+			      (const float**)devAList,
+			      lda,
+			      (const float**)devBList,
+			      ldb,
+			      &beta,
+			      devCList,
+			      ldc,
+			      num);
   }
   free(matrices);
   free(vectors);
