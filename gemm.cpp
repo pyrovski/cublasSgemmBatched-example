@@ -12,7 +12,7 @@ int main(int argc, char ** argv){
   int status;
   int lower = 2;
   int upper = 100;
-  int num = 10000;
+  int num = 25000;
   int reps = 5;
   int verbose = 0;
   
@@ -66,17 +66,13 @@ int main(int argc, char ** argv){
   if(verbose) cout << "allocating device variables" << endl;
 
   // allocate input space on device
-  struct cudaPitchedPtr devMatrices;
-  struct cudaExtent devMatricesExtent;
-  
-  devMatricesExtent = 
-    make_cudaExtent(upper * sizeof(float),
-		    upper,
-		    num);
-
+  float *devMatrices;
+  size_t devMatricesPitch;
   cudaStat = 
-    cudaMalloc3D(&devMatrices,
-		 devMatricesExtent);
+    cudaMallocPitch(&devMatrices,
+		    &devMatricesPitch,
+		    upper * sizeof(float),
+		    num * upper);
 
   assert(!cudaStat);
 
@@ -103,18 +99,14 @@ int main(int argc, char ** argv){
 
   if(verbose) cout << "copying data to device" << endl;
   // copy data to device
-  struct cudaMemcpy3DParms devMatricesParams = {0};
-  devMatricesParams.extent = devMatricesExtent;
-  devMatricesParams.kind = cudaMemcpyHostToDevice;
-  devMatricesParams.dstPtr = devMatrices;
-  devMatricesParams.srcPtr = 
-    make_cudaPitchedPtr(matrices, 
-		      upper * sizeof(float),
-		      upper,
-		      num);
-
   cudaStat = 
-    cudaMemcpy3D(&devMatricesParams);
+    cudaMemcpy2D(devMatrices,
+		 devMatricesPitch,
+		 matrices,
+		 upper * sizeof(float),
+		 upper * sizeof(float),
+		 upper * num,
+		 cudaMemcpyHostToDevice);
 
   assert(!cudaStat);
   
@@ -137,8 +129,7 @@ int main(int argc, char ** argv){
   CList = (float**)malloc(num * sizeof(float*));
 
   for(int i = 0; i < num; i++){
-    AList[i] = (float*)devMatrices.ptr + 
-      devMatrices.pitch/sizeof(float) * devMatrices.ysize * i;
+    AList[i] = devMatrices + devMatricesPitch/sizeof(float) * upper * i;
     BList[i] = devVectors + devVectorsPitch/sizeof(float) * i;
     CList[i] = devResult + devResultPitch/sizeof(float) * i;
   }
@@ -172,8 +163,12 @@ int main(int argc, char ** argv){
 			cudaMemcpyHostToDevice);
   assert(!cudaStat);
 
+  cudaEvent_t start, stop;
+  cudaEventCreate(&start);
+  cudaEventCreate(&stop);
+  
   int 
-    lda = devMatrices.pitch / sizeof(float),
+    lda = devMatricesPitch / sizeof(float),
     ldb = devVectorsPitch / sizeof(float),
     ldc = devResultPitch / sizeof(float);
   const float alpha = 1.0f, beta = 0.0f;
@@ -182,6 +177,7 @@ int main(int argc, char ** argv){
   for(int size = lower; size <= upper; size++){
     if(verbose) cout << "running with size " << size << endl;
     for(int rep = 0; rep < reps; rep++){
+      cudaEventRecord(start, 0);
       stat = cublasSgemmBatched(handle,
 				CUBLAS_OP_N,
 				CUBLAS_OP_N,
@@ -197,10 +193,20 @@ int main(int argc, char ** argv){
 				devCList,
 				ldc,
 				num);
+      cudaEventRecord(stop,0);
+      cudaEventSynchronize(stop);
       if(stat != CUBLAS_STATUS_SUCCESS){
 	cerr << "cublasSgemmBatched failed" << endl;
 	exit(1);
       }
+      assert(!cudaGetLastError());
+      
+      float elapsed;
+      cudaEventElapsedTime(&elapsed, start, stop);
+      elapsed /= 1000.0f;
+      
+      cout << "size " << size << ": " << elapsed << " s; " 
+	   << elapsed / num << " s per operation" << endl;
     }
   }
   free(matrices);
