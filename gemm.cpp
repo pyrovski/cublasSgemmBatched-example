@@ -178,6 +178,7 @@ int main(int argc, char ** argv){
    */
   for(int size = lower; size <= upper; size++){
     if(verbose) cout << "running with size " << size << endl;
+    double sum = 0.0;
     for(int rep = 0; rep < reps; rep++){
       cudaEventRecord(start, 0);
       stat = cublasDgemmBatched(handle,
@@ -206,10 +207,14 @@ int main(int argc, char ** argv){
       float elapsed;
       cudaEventElapsedTime(&elapsed, start, stop);
       elapsed /= 1000.0f;
+      sum += elapsed;
       
-      cout << "distinct; size " << size << ": " << elapsed << " s; " 
-	   << elapsed / num << " s per operation" << endl;
+      if(verbose)
+	cout << "distinct; size " << size << ": " << elapsed << " s; " 
+	     << elapsed / num << " s per operation" << endl;
     }
+    cout << "distinct; size " << size << " average: " << sum/reps << " s; "
+	 << sum / reps / num << " s per operation" << endl;
   }
 
   /* Perform <num> <size x size> x <size x 1> multiplications 
@@ -222,6 +227,7 @@ int main(int argc, char ** argv){
 
   for(int size = lower; size <= upper; size++){
     if(verbose) cout << "running with size " << size << endl;
+    double sum = 0.0;
     for(int rep = 0; rep < reps; rep++){
       cudaEventRecord(start, 0);
       stat = cublasDgemmBatched(handle,
@@ -250,10 +256,14 @@ int main(int argc, char ** argv){
       float elapsed;
       cudaEventElapsedTime(&elapsed, start, stop);
       elapsed /= 1000.0f;
+      sum += elapsed;
       
-      cout << "single; size " << size << ": " << elapsed << " s; " 
-	   << elapsed / num << " s per operation" << endl;
+      if(verbose)
+	cout << "single; size " << size << ": " << elapsed << " s; " 
+	     << elapsed / num << " s per operation" << endl;
     }
+    cout << "single; size " << size << " average: " << sum/reps << " s; "
+	 << sum / reps / num << " s per operation" << endl;
   }
 
   free(matrices);
