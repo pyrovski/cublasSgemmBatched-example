@@ -173,7 +173,9 @@ int main(int argc, char ** argv){
     ldc = devResultPitch / sizeof(float);
   const float alpha = 1.0f, beta = 0.0f;
 
-  // perform <num> <size x size> x <size x 1> multiplications
+  /* perform <num> <size x size> x <size x 1> multiplications 
+     with distinct matrices
+   */
   for(int size = lower; size <= upper; size++){
     if(verbose) cout << "running with size " << size << endl;
     for(int rep = 0; rep < reps; rep++){
@@ -205,10 +207,55 @@ int main(int argc, char ** argv){
       cudaEventElapsedTime(&elapsed, start, stop);
       elapsed /= 1000.0f;
       
-      cout << "size " << size << ": " << elapsed << " s; " 
+      cout << "distinct; size " << size << ": " << elapsed << " s; " 
 	   << elapsed / num << " s per operation" << endl;
     }
   }
+
+  /* Perform <num> <size x size> x <size x 1> multiplications 
+     with a single matrix.
+     Is it possible to use constant memory cublas?
+  */
+
+  for(int i = 0; i < num; i++)
+    AList[i] = devMatrices;
+
+  for(int size = lower; size <= upper; size++){
+    if(verbose) cout << "running with size " << size << endl;
+    for(int rep = 0; rep < reps; rep++){
+      cudaEventRecord(start, 0);
+      stat = cublasSgemmBatched(handle,
+				CUBLAS_OP_N,
+				CUBLAS_OP_N,
+				size,
+				1,
+				size,
+				&alpha,
+				(const float**)devAList,
+				lda,
+				(const float**)devBList,
+				ldb,
+				&beta,
+				devCList,
+				ldc,
+				num);
+      cudaEventRecord(stop,0);
+      cudaEventSynchronize(stop);
+      if(stat != CUBLAS_STATUS_SUCCESS){
+	cerr << "cublasSgemmBatched failed" << endl;
+	exit(1);
+      }
+      assert(!cudaGetLastError());
+      
+      float elapsed;
+      cudaEventElapsedTime(&elapsed, start, stop);
+      elapsed /= 1000.0f;
+      
+      cout << "single; size " << size << ": " << elapsed << " s; " 
+	   << elapsed / num << " s per operation" << endl;
+    }
+  }
+
   free(matrices);
   free(vectors);
       
