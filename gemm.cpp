@@ -38,7 +38,13 @@ int main(int argc, char ** argv){
       exit(1);
     }
   }
-
+  if(verbose) 
+    cout << "running with" 
+	 << " lower: " << lower
+	 << " upper: " << upper
+	 << " num: " << num
+	 << " reps: " << reps
+	 << endl;
 
   if(verbose) cout << "initializing inputs" << endl;
   double *matrices = (double*)malloc(upper * upper * num * sizeof(double));
